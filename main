@@ -1,0 +1,381 @@
+// main.js - wire UI controls to the demo text
+(function(){
+ &nbsp;const demo = document.getElementById('demo-text');
+ &nbsp;const fontSelect = document.getElementById('font-select');
+ &nbsp;const alignControls = document.getElementById('align-controls');
+ &nbsp;// default alignment
+ &nbsp;let currentAlign = 'left';
+ &nbsp;// Input enforcement: allow A-Z/a-z, digits, whitespace, punctuation, and glyphs supported by current font
+ &nbsp;let allowSpacesAndNewlines = true; // user requested to allow spaces and newlines
+ &nbsp;const glyphSupportCache = new Map(); // cache by font+char
+ &nbsp;// helper: determine if a glyph exists in the given font by comparing widths on a canvas
+ &nbsp;function isGlyphAvailable(fontFamily, ch){
+ &nbsp; &nbsp;if(!ch) return false;
+ &nbsp; &nbsp;const key = fontFamily + '|' + ch;
+ &nbsp; &nbsp;if(glyphSupportCache.has(key)) return glyphSupportCache.get(key);
+ &nbsp; &nbsp;try{
+ &nbsp; &nbsp; &nbsp;const canvas = document.createElement('canvas');
+ &nbsp; &nbsp; &nbsp;canvas.width = 200; canvas.height = 80;
+ &nbsp; &nbsp; &nbsp;const ctx = canvas.getContext('2d');
+ &nbsp; &nbsp; &nbsp;const size = 48;
+ &nbsp; &nbsp; &nbsp;// measure with target font + a generic fallback
+ &nbsp; &nbsp; &nbsp;ctx.font = `${size}px ${fontFamily}, monospace`;
+ &nbsp; &nbsp; &nbsp;const w1 = ctx.measureText(ch).width;
+ &nbsp; &nbsp; &nbsp;// measure with fallback only (monospace)
+ &nbsp; &nbsp; &nbsp;ctx.font = `${size}px monospace`;
+ &nbsp; &nbsp; &nbsp;const w2 = ctx.measureText(ch).width;
+ &nbsp; &nbsp; &nbsp;// If widths differ, glyph likely present in target font. If equal, assume missing.
+ &nbsp; &nbsp; &nbsp;const present = Math.abs(w1 - w2) &gt; 0.1;
+ &nbsp; &nbsp; &nbsp;glyphSupportCache.set(key, present);
+ &nbsp; &nbsp; &nbsp;return present;
+ &nbsp; &nbsp;}catch(e){
+ &nbsp; &nbsp; &nbsp;// if any error, be permissive
+ &nbsp; &nbsp; &nbsp;glyphSupportCache.set(key, true);
+ &nbsp; &nbsp; &nbsp;return true;
+ &nbsp; &nbsp;}
+ &nbsp;}
+
+ &nbsp;function isAllowedChar(ch){
+ &nbsp; &nbsp;if(!ch) return false;
+ &nbsp; &nbsp;// allow ASCII letters
+ &nbsp; &nbsp;if(/^[A-Za-z]$/.test(ch)) return true;
+ &nbsp; &nbsp;// allow digits
+ &nbsp; &nbsp;if(/^[0-9]$/.test(ch)) return true;
+ &nbsp; &nbsp;// allow whitespace (space, tab, newline)
+ &nbsp; &nbsp;if(/^[\s]$/.test(ch)) return allowSpacesAndNewlines;
+ &nbsp; &nbsp;// allow common punctuation and symbols
+ &nbsp; &nbsp;if(/^[\p{P}\p{S}]$/u.test(ch)) return true;
+ &nbsp; &nbsp;// check if glyph exists in selected font
+ &nbsp; &nbsp;const currentFont = fontSelect.value || '';
+ &nbsp; &nbsp;return isGlyphAvailable(currentFont, ch);
+ &nbsp;}
+
+ &nbsp;const letterSpacing = document.getElementById('letter-spacing');
+ &nbsp;const letterSpacingValue = document.getElementById('letter-spacing-value');
+ &nbsp;const lineHeight = document.getElementById('line-height');
+ &nbsp;const lineHeightValue = document.getElementById('line-height-value');
+ &nbsp;const fontSize = document.getElementById('font-size');
+ &nbsp;const fontSizeValue = document.getElementById('font-size-value');
+ &nbsp;const fontColor = document.getElementById('font-color');
+ &nbsp;
+ &nbsp;function applyAll(){
+ &nbsp; &nbsp;// font family (quote names to handle spaces)
+ &nbsp; &nbsp;demo.style.fontFamily = '"' + fontSelect.value + '", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif';
+
+ &nbsp; &nbsp;// letter spacing in px
+ &nbsp; &nbsp;const ls = parseFloat(letterSpacing.value);
+ &nbsp; &nbsp;demo.style.letterSpacing = ls + 'px';
+ &nbsp; &nbsp;letterSpacingValue.textContent = ls;
+
+ &nbsp; &nbsp;// line height slider is 10..40 representing 1.0..4.0 (divide by 10)
+ &nbsp; &nbsp;const lh = (parseFloat(lineHeight.value) / 10);
+ &nbsp; &nbsp;demo.style.lineHeight = lh;
+ &nbsp; &nbsp;lineHeightValue.textContent = lh.toFixed(1);
+
+ &nbsp; &nbsp;// font size in px
+ &nbsp; &nbsp;const fs = parseFloat(fontSize.value);
+ &nbsp; &nbsp;demo.style.fontSize = fs + 'px';
+ &nbsp; &nbsp;fontSizeValue.textContent = fs;
+
+ &nbsp; &nbsp;// color: always use the selected color for the text area
+ &nbsp; &nbsp;demo.style.color = fontColor.value;
+ &nbsp; &nbsp;// apply text alignment
+ &nbsp; &nbsp;demo.style.textAlign = currentAlign;
+ &nbsp;}
+ &nbsp;// no placeholder JS necessary — static initial content is used
+
+ &nbsp;// Try to explicitly load fonts using the FontFace API so the file-based @font-face is applied
+ &nbsp;function loadFonts(){
+ &nbsp; &nbsp;if(!('FontFace' in window)) return Promise.resolve();
+ &nbsp; &nbsp;const fonts = [];
+ &nbsp; &nbsp;try{
+ &nbsp; &nbsp; &nbsp;fonts.push(new FontFace('Londerground', "url('fonts/LDN-Round.woff2') format('woff2')"));
+ &nbsp; &nbsp; &nbsp;fonts.push(new FontFace('MAN HEX', "url('fonts/MAN-HEX.woff2') format('woff2')"));
+ &nbsp; &nbsp; &nbsp;fonts.push(new FontFace('EDISerif', "url('fonts/EDISerif.woff2') format('woff2')"));
+ &nbsp; &nbsp;}catch(e){
+ &nbsp; &nbsp; &nbsp;return Promise.resolve();
+ &nbsp; &nbsp;}
+ &nbsp; &nbsp;const loads = fonts.map(f =&gt; f.load().then(loaded =&gt; {
+ &nbsp; &nbsp; &nbsp;try{ document.fonts.add(loaded); }catch(e){}
+ &nbsp; &nbsp; &nbsp;return loaded;
+ &nbsp; &nbsp;}).catch(err =&gt; {
+ &nbsp; &nbsp; &nbsp;console.warn('Font load failed', err);
+ &nbsp; &nbsp; &nbsp;return null;
+ &nbsp; &nbsp;}));
+ &nbsp; &nbsp;return Promise.all(loads);
+ &nbsp;}
+
+ &nbsp;// initialize: load fonts then apply styles
+ &nbsp;loadFonts().finally(()=&gt;{
+ &nbsp; &nbsp;applyAll();
+ &nbsp;});
+
+ &nbsp;// Alignment button handling
+ &nbsp;function setActiveAlignButton(align){
+ &nbsp; &nbsp;if(!alignControls) return;
+ &nbsp; &nbsp;const buttons = alignControls.querySelectorAll('.align-btn');
+ &nbsp; &nbsp;buttons.forEach(b =&gt; b.classList.toggle('active', b.dataset.align === align));
+ &nbsp;}
+
+ &nbsp;if(alignControls){
+ &nbsp; &nbsp;const buttons = Array.from(alignControls.querySelectorAll('.align-btn'));
+ &nbsp; &nbsp;// make focusable and add per-button listeners; also add debugging logs to diagnose click issues
+ &nbsp; &nbsp;buttons.forEach(btn =&gt; {
+ &nbsp; &nbsp; &nbsp;btn.tabIndex = 0;
+ &nbsp; &nbsp; &nbsp;btn.addEventListener('click', (ev) =&gt; {
+ &nbsp; &nbsp; &nbsp; &nbsp;console.log('[debug] align button click target:', ev.target, 'dataset.align=', btn.dataset.align);
+ &nbsp; &nbsp; &nbsp; &nbsp;const a = btn.dataset.align || 'left';
+ &nbsp; &nbsp; &nbsp; &nbsp;currentAlign = a;
+ &nbsp; &nbsp; &nbsp; &nbsp;setActiveAlignButton(a);
+ &nbsp; &nbsp; &nbsp; &nbsp;applyAll();
+ &nbsp; &nbsp; &nbsp;});
+ &nbsp; &nbsp; &nbsp;// support keyboard activation (Enter / Space)
+ &nbsp; &nbsp; &nbsp;btn.addEventListener('keydown', (e) =&gt; {
+ &nbsp; &nbsp; &nbsp; &nbsp;if(e.key === 'Enter' || e.key === ' '){
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;e.preventDefault();
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;btn.click();
+ &nbsp; &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp; &nbsp;});
+ &nbsp; &nbsp;});
+ &nbsp; &nbsp;// ensure initial active state
+ &nbsp; &nbsp;setActiveAlignButton(currentAlign);
+ &nbsp;}
+
+ &nbsp;// Debug helper: report which element is on top at a few points over the menu-bar
+ &nbsp;(function debugOverlay(){
+ &nbsp; &nbsp;try{
+ &nbsp; &nbsp; &nbsp;const menuBar = document.querySelector('.menu-bar');
+ &nbsp; &nbsp; &nbsp;if(!menuBar) return;
+ &nbsp; &nbsp; &nbsp;const rect = menuBar.getBoundingClientRect();
+ &nbsp; &nbsp; &nbsp;const points = [
+ &nbsp; &nbsp; &nbsp; &nbsp;{x: rect.left + 10, y: rect.top + 10},
+ &nbsp; &nbsp; &nbsp; &nbsp;{x: rect.left + rect.width / 2, y: rect.top + 10},
+ &nbsp; &nbsp; &nbsp; &nbsp;{x: rect.right - 10, y: rect.top + 10}
+ &nbsp; &nbsp; &nbsp;];
+ &nbsp; &nbsp; &nbsp;points.forEach(p =&gt; {
+ &nbsp; &nbsp; &nbsp; &nbsp;const el = document.elementFromPoint(p.x, p.y);
+ &nbsp; &nbsp; &nbsp; &nbsp;console.log('[debug] elementFromPoint at', p.x, p.y, '-&gt;', el, el &amp;&amp; el.className ? el.className : el &amp;&amp; el.id ? el.id : el);
+ &nbsp; &nbsp; &nbsp;});
+ &nbsp; &nbsp; &nbsp;// also log a click listener on menuBar to capture events
+ &nbsp; &nbsp; &nbsp;menuBar.addEventListener('click', (e)=&gt;{
+ &nbsp; &nbsp; &nbsp; &nbsp;console.log('[debug] menu-bar click event target:', e.target, 'full event:', e);
+ &nbsp; &nbsp; &nbsp;}, true);
+ &nbsp; &nbsp;}catch(e){console.warn('[debug] overlay check failed', e)}
+ &nbsp;})();
+
+ &nbsp;// apply selected color immediately while typing
+ &nbsp;demo.addEventListener('input', ()=&gt;{
+ &nbsp; &nbsp;demo.style.color = fontColor.value;
+ &nbsp;});
+
+ &nbsp;// Placeholder behavior: clear placeholder on first pointerdown click, restore when empty
+ &nbsp;function updateEmptyState(){
+ &nbsp; &nbsp;const empty = demo.textContent.trim().length === 0;
+ &nbsp; &nbsp;demo.setAttribute('data-empty', empty ? 'true' : 'false');
+ &nbsp;}
+
+ &nbsp;// initialize empty state
+ &nbsp;updateEmptyState();
+
+ &nbsp;// clear placeholder on pointerdown (so it disappears immediately when user clicks)
+ &nbsp;demo.addEventListener('pointerdown', (e) =&gt; {
+ &nbsp; &nbsp;const isEmpty = demo.getAttribute('data-empty') === 'true';
+ &nbsp; &nbsp;if(isEmpty){
+ &nbsp; &nbsp; &nbsp;e.preventDefault();
+ &nbsp; &nbsp; &nbsp;demo.setAttribute('data-empty', 'false');
+ &nbsp; &nbsp; &nbsp;demo.innerHTML = '';
+ &nbsp; &nbsp; &nbsp;demo.focus();
+ &nbsp; &nbsp; &nbsp;// place caret at start
+ &nbsp; &nbsp; &nbsp;const sel = window.getSelection();
+ &nbsp; &nbsp; &nbsp;const range = document.createRange();
+ &nbsp; &nbsp; &nbsp;range.setStart(demo, 0);
+ &nbsp; &nbsp; &nbsp;range.collapse(true);
+ &nbsp; &nbsp; &nbsp;sel.removeAllRanges();
+ &nbsp; &nbsp; &nbsp;sel.addRange(range);
+ &nbsp; &nbsp;}
+ &nbsp;});
+
+ &nbsp;// after input or blur, update empty state and sanitize
+ &nbsp;demo.addEventListener('input', ()=&gt;{
+ &nbsp; &nbsp;demo.style.color = fontColor.value;
+ &nbsp; &nbsp;sanitizeContentEditable(demo);
+ &nbsp; &nbsp;updateEmptyState();
+ &nbsp;});
+ &nbsp;demo.addEventListener('blur', ()=&gt;{
+ &nbsp; &nbsp;sanitizeContentEditable(demo);
+ &nbsp; &nbsp;updateEmptyState();
+ &nbsp;});
+
+ &nbsp;// --- Input enforcement handlers ---
+ &nbsp;let composing = false;
+ &nbsp;demo.addEventListener('compositionstart', () =&gt; { composing = true; });
+ &nbsp;demo.addEventListener('compositionend', (e) =&gt; {
+ &nbsp; &nbsp;composing = false;
+ &nbsp; &nbsp;// after IME composition ends, filter the inserted text
+ &nbsp; &nbsp;// sanitize the whole content to remove disallowed characters
+ &nbsp; &nbsp;sanitizeContentEditable(demo);
+ &nbsp;});
+
+ &nbsp;// beforeinput: intercept typed characters
+ &nbsp;demo.addEventListener('beforeinput', (e) =&gt; {
+ &nbsp; &nbsp;if(composing) return; // don't interfere with IME
+ &nbsp; &nbsp;if(e.inputType === 'insertText' &amp;&amp; e.data){
+ &nbsp; &nbsp; &nbsp;const filtered = Array.from(e.data).filter(ch =&gt; isAllowedChar(ch)).join('');
+ &nbsp; &nbsp; &nbsp;if(filtered === e.data) return; // all allowed
+ &nbsp; &nbsp; &nbsp;e.preventDefault();
+ &nbsp; &nbsp; &nbsp;// insert filtered text at caret
+ &nbsp; &nbsp; &nbsp;try{ document.execCommand('insertText', false, filtered); }catch(err){
+ &nbsp; &nbsp; &nbsp; &nbsp;// fallback: modify selection
+ &nbsp; &nbsp; &nbsp; &nbsp;const sel = window.getSelection();
+ &nbsp; &nbsp; &nbsp; &nbsp;if(sel &amp;&amp; sel.rangeCount){
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;const range = sel.getRangeAt(0);
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;range.deleteContents();
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;range.insertNode(document.createTextNode(filtered));
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;range.collapse(false);
+ &nbsp; &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp;}
+ &nbsp;});
+
+ &nbsp;// paste: filter clipboard text
+ &nbsp;demo.addEventListener('paste', (e) =&gt; {
+ &nbsp; &nbsp;e.preventDefault();
+ &nbsp; &nbsp;const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+ &nbsp; &nbsp;const filtered = Array.from(text).filter(ch =&gt; isAllowedChar(ch)).join('');
+ &nbsp; &nbsp;try{ document.execCommand('insertText', false, filtered); }catch(err){
+ &nbsp; &nbsp; &nbsp;const sel = window.getSelection();
+ &nbsp; &nbsp; &nbsp;if(sel &amp;&amp; sel.rangeCount){
+ &nbsp; &nbsp; &nbsp; &nbsp;const range = sel.getRangeAt(0);
+ &nbsp; &nbsp; &nbsp; &nbsp;range.deleteContents();
+ &nbsp; &nbsp; &nbsp; &nbsp;range.insertNode(document.createTextNode(filtered));
+ &nbsp; &nbsp; &nbsp; &nbsp;range.collapse(false);
+ &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp;}
+ &nbsp;});
+
+ &nbsp;// sanitize helper: removes any disallowed characters from the contenteditable element
+ &nbsp;function sanitizeContentEditable(el){
+ &nbsp; &nbsp;const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+ &nbsp; &nbsp;const nodes = [];
+ &nbsp; &nbsp;while(walker.nextNode()) nodes.push(walker.currentNode);
+ &nbsp; &nbsp;nodes.forEach(t =&gt; {
+ &nbsp; &nbsp; &nbsp;const orig = t.nodeValue;
+ &nbsp; &nbsp; &nbsp;const filtered = Array.from(orig).filter(ch =&gt; isAllowedChar(ch)).join('');
+ &nbsp; &nbsp; &nbsp;if(filtered !== orig) t.nodeValue = filtered;
+ &nbsp; &nbsp;});
+ &nbsp;}
+
+ &nbsp;// event listeners
+ &nbsp;fontSelect.addEventListener('change', applyAll);
+ &nbsp;letterSpacing.addEventListener('input', applyAll);
+ &nbsp;lineHeight.addEventListener('input', applyAll);
+ &nbsp;fontSize.addEventListener('input', applyAll);
+ &nbsp;fontColor.addEventListener('input', applyAll);
+
+ &nbsp;// Delegated fallback: if pointerdown occurs near a value display but event didn't reach it
+ &nbsp;// some browsers (Safari) may not fire click on inline spans inside labels. Detect proximity.
+ &nbsp;document.addEventListener('pointerdown', (e) =&gt; {
+ &nbsp; &nbsp;try{
+ &nbsp; &nbsp; &nbsp;if(!window.__inlineNumberEditors || window.__inlineNumberEditors.length === 0) return;
+ &nbsp; &nbsp; &nbsp;const x = e.clientX, y = e.clientY;
+ &nbsp; &nbsp; &nbsp;for(const item of window.__inlineNumberEditors){
+ &nbsp; &nbsp; &nbsp; &nbsp;const rect = item.span.getBoundingClientRect();
+ &nbsp; &nbsp; &nbsp; &nbsp;// small tolerance in px
+ &nbsp; &nbsp; &nbsp; &nbsp;const tol = 6;
+ &nbsp; &nbsp; &nbsp; &nbsp;if(x &gt;= rect.left - tol &amp;&amp; x &lt;= rect.right + tol &amp;&amp; y &gt;= rect.top - tol &amp;&amp; y &lt;= rect.bottom + tol){
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;// if the actual event target is the span or within it, start edit; otherwise still trigger
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;item.startEdit(e);
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;e.preventDefault();
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;e.stopPropagation();
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;return;
+ &nbsp; &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp;}catch(err){/* ignore */}
+ &nbsp;}, {capture:true});
+
+ &nbsp;// Make displayed numeric values editable by clicking them
+ &nbsp;function attachInlineNumberEditor(displaySpan, sliderEl, options){
+ &nbsp; &nbsp;displaySpan.style.cursor = 'text';
+ &nbsp; &nbsp;const startEdit = (e) =&gt; {
+ &nbsp; &nbsp; &nbsp;if(e){ e.stopPropagation(); e.preventDefault &amp;&amp; e.preventDefault(); }
+ &nbsp; &nbsp; &nbsp;if(displaySpan._editing) return;
+ &nbsp; &nbsp; &nbsp;displaySpan._editing = true;
+ &nbsp; &nbsp; &nbsp;const current = displaySpan.textContent.trim();
+ &nbsp; &nbsp; &nbsp;const input = document.createElement('input');
+ &nbsp; &nbsp; &nbsp;input.type = 'number';
+ &nbsp; &nbsp; &nbsp;input.className = 'number-editor';
+ &nbsp; &nbsp; &nbsp;input.value = current;
+ &nbsp; &nbsp; &nbsp;if(options.step) input.step = options.step;
+ &nbsp; &nbsp; &nbsp;if(options.min !== undefined) input.min = options.min;
+ &nbsp; &nbsp; &nbsp;if(options.max !== undefined) input.max = options.max;
+ &nbsp; &nbsp; &nbsp;// replace span with input
+ &nbsp; &nbsp; &nbsp;displaySpan.style.display = 'none';
+ &nbsp; &nbsp; &nbsp;displaySpan.parentNode.insertBefore(input, displaySpan.nextSibling);
+ &nbsp; &nbsp; &nbsp;input.focus();
+ &nbsp; &nbsp; &nbsp;input.select();
+
+ &nbsp; &nbsp; &nbsp;function commit(){
+ &nbsp; &nbsp; &nbsp; &nbsp;let val = input.value;
+ &nbsp; &nbsp; &nbsp; &nbsp;if(val === '') val = options.default;
+ &nbsp; &nbsp; &nbsp; &nbsp;// convert for line-height if needed
+ &nbsp; &nbsp; &nbsp; &nbsp;if(options.type === 'line'){
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;const v = parseFloat(val);
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;if(isNaN(v)) return cancel();
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;const sliderVal = Math.round(v * 10);
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;sliderEl.value = Math.max(parseInt(sliderEl.min,10), Math.min(parseInt(sliderEl.max,10), sliderVal));
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;displaySpan.textContent = (sliderEl.value / 10).toFixed(1);
+ &nbsp; &nbsp; &nbsp; &nbsp;} else {
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;const v = parseFloat(val);
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;if(isNaN(v)) return cancel();
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;sliderEl.value = Math.max(parseFloat(sliderEl.min), Math.min(parseFloat(sliderEl.max), v));
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;displaySpan.textContent = sliderEl.value;
+ &nbsp; &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp; &nbsp; &nbsp;cleanup();
+ &nbsp; &nbsp; &nbsp; &nbsp;applyAll();
+ &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp; &nbsp;function cancel(){
+ &nbsp; &nbsp; &nbsp; &nbsp;cleanup();
+ &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp; &nbsp;function cleanup(){
+ &nbsp; &nbsp; &nbsp; &nbsp;displaySpan._editing = false;
+ &nbsp; &nbsp; &nbsp; &nbsp;if(input.parentNode) input.parentNode.removeChild(input);
+ &nbsp; &nbsp; &nbsp; &nbsp;displaySpan.style.display = '';
+ &nbsp; &nbsp; &nbsp;}
+
+ &nbsp; &nbsp; &nbsp;input.addEventListener('keydown', (ev) =&gt; {
+ &nbsp; &nbsp; &nbsp; &nbsp;if(ev.key === 'Enter') { ev.preventDefault(); commit(); }
+ &nbsp; &nbsp; &nbsp; &nbsp;else if(ev.key === 'Escape') { ev.preventDefault(); cancel(); }
+ &nbsp; &nbsp; &nbsp;});
+ &nbsp; &nbsp; &nbsp;input.addEventListener('blur', () =&gt; { commit(); });
+ &nbsp; &nbsp;};
+
+ &nbsp; &nbsp;// try both pointerdown and click to ensure it triggers even when wrapped in labels
+ &nbsp; &nbsp;displaySpan.addEventListener('pointerdown', startEdit);
+ &nbsp; &nbsp;displaySpan.addEventListener('click', startEdit);
+
+ &nbsp; &nbsp;// Register for delegated proximity detection fallback (for browsers like Safari)
+ &nbsp; &nbsp;if(!window.__inlineNumberEditors) window.__inlineNumberEditors = [];
+ &nbsp; &nbsp;window.__inlineNumberEditors.push({span: displaySpan, startEdit});
+ &nbsp;}
+
+ &nbsp;// attach editors: letter-spacing (px), line-height (decimal), font-size (px)
+ &nbsp;attachInlineNumberEditor(letterSpacingValue, letterSpacing, {type:'letter', step:1, min:-10, max:20, default:0});
+ &nbsp;attachInlineNumberEditor(lineHeightValue, lineHeight, {type:'line', step:0.1, min:-10, max:40, default:2.0});
+ &nbsp;attachInlineNumberEditor(fontSizeValue, fontSize, {type:'size', step:1, min:10, max:60, default:24});
+
+ &nbsp;// keep contenteditable focus behavior
+ &nbsp;demo.addEventListener('click', () =&gt; demo.focus());
+
+ &nbsp;// keyboard shortcuts: Ctrl+0..9 to set font-size quickly (optional)
+ &nbsp;document.addEventListener('keydown', (e)=&gt;{
+ &nbsp; &nbsp;if(e.ctrlKey &amp;&amp; !e.shiftKey){
+ &nbsp; &nbsp; &nbsp;const n = parseInt(e.key,10);
+ &nbsp; &nbsp; &nbsp;if(!isNaN(n)){
+ &nbsp; &nbsp; &nbsp; &nbsp;const target = 12 + n*4; // quick mapping
+ &nbsp; &nbsp; &nbsp; &nbsp;fontSize.value = Math.max(10, Math.min(60, target));
+ &nbsp; &nbsp; &nbsp; &nbsp;applyAll();
+ &nbsp; &nbsp; &nbsp;}
+ &nbsp; &nbsp;}
+ &nbsp;});
+
+})();
